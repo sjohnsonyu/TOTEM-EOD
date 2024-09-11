@@ -4,11 +4,19 @@ import os
 import pdb
 import torch
 import torch.nn as nn
+import sklearn
+import sklearn.metrics
+import pandas as pd
 
 
 def one_loop(loader, vqvae_model, device, args):
     mse = []
     mae = []
+    preds = []
+    trues = []
+    codes = []
+    code_ids = []
+    inps = []
 
     for i, batch_x in enumerate(loader):
         batch_x = batch_x.float().to(device)
@@ -19,20 +27,53 @@ def one_loop(loader, vqvae_model, device, args):
         mask = torch.rand((B, N, T)).to(device)
         mask[mask <= args.mask_ratio] = 0  # masked
         mask[mask > args.mask_ratio] = 1  # remained
-        inp = batch_x.masked_fill(mask == 0, 0)
+        # inp = batch_x.masked_fill(mask == 0, 0)
+        inp = batch_x.masked_fill(mask == 0, -1)
 
         x_codes, x_code_ids, codebook = revintime2codes(inp, args.compression_factor, vqvae_model.encoder, vqvae_model.vq)
+        # print('codebook', codebook)
         # expects code to be dim [bs x nvars x compressed_time]
         x_predictions_revin_space = codes2timerevin(x_code_ids, codebook, args.compression_factor, vqvae_model.decoder)
 
         batch_x_masky = batch_x[mask == 0]
         pred_x_masky = np.swapaxes(x_predictions_revin_space, 1, 2)[mask == 0]
+        preds.append(pred_x_masky)
+        trues.append(batch_x_masky)
+        inps.append(inp)
+        codes.append(x_codes.detach().cpu().numpy())
+        code_ids.append(x_code_ids.detach().cpu().numpy())
+
 
         mse.append(nn.functional.mse_loss(batch_x_masky, pred_x_masky).item())
         mae.append(nn.functional.l1_loss(batch_x_masky, pred_x_masky).item())
 
+    seed = args.trained_vqvae_model_path.split('seed')[1].split('_')[0]
+
     print('MSE:', np.mean(mse))
     print('MAE:', np.mean(mae))
+    import joblib
+    joblib.dump(preds, f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_preds.pkl')
+    joblib.dump(trues, f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_trues.pkl')
+    joblib.dump(codes, f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_codes.pkl')
+    joblib.dump(code_ids, f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_code_ids.pkl')
+    joblib.dump(codebook.detach().cpu().numpy(), f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_codebook.pkl')
+    joblib.dump(inps, f'/n/holylabs/LABS/krajan_lab/Users/sjohnsonyu/elephantfish-talking-storage/totem_vars/{args.dataset}_mr{args.mask_ratio}_seed{seed}_f{args.compression_factor}_inps.pkl')
+
+    concatenated_preds = torch.cat(preds, dim=0)
+    concatenated_trues = torch.cat(trues, dim=0)
+    thresholded_preds_all = np.where(concatenated_preds.cpu() > 0.5, 1, 0)
+    trues_all = concatenated_trues.cpu().numpy()
+    metrics = sklearn.metrics.precision_recall_fscore_support(trues_all, thresholded_preds_all, average=None)
+    metrics_df = pd.DataFrame({
+        'Precision': metrics[0],
+        'Recall': metrics[1],
+        'F1-Score': metrics[2],
+        'Support': metrics[3]
+    })
+    print(metrics_df.round(3))
+    f1 = metrics_df['F1-Score'].mean()
+    print('Overall F1-Score:', f1.round(3))
+
 
 
 def revintime2codes(revin_data, compression_factor, vqvae_encoder, vqvae_quantizer):
@@ -161,6 +202,22 @@ def create_NONrevin_dataloaders(batchsize=100, dataset="dummy", base_path='dummy
         print('sunspot')
         full_path = base_path + '/sunspot'
 
+    elif dataset == 'real_fish_day_12ms':
+            print('real_fish_day_12ms')
+            full_path = base_path + '/real_fish_day_12ms'
+
+    elif dataset == 'real_fish_day_12ms_seq_len_720':
+            print('real_fish_day_12ms_seq_len_720')
+            full_path = base_path + '/real_fish_day_12ms_seq_len_720'
+    
+    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_720':
+            print('real_fish_day_12ms_eods_only_seq_len_720')
+            full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_720'
+
+    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_640':
+            print('real_fish_day_12ms_eods_only_seq_len_640')
+            full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_640'
+
     else:
         print('Not done yet')
         pdb.set_trace()
@@ -173,19 +230,58 @@ def create_NONrevin_dataloaders(batchsize=100, dataset="dummy", base_path='dummy
                                                 num_workers=10,
                                                 drop_last=False)
 
-    return test_dataloader
+    return test_dataloader, test_data
 
 
 def main(args):
     device = 'cuda:' + str(args.gpu)
+
+    test_loader, test_data = create_NONrevin_dataloaders(batchsize=4096*10, dataset=args.dataset, base_path=args.base_path)
+    # run_baselines(test_data)
+    # return
+
     vqvae_model = torch.load(args.trained_vqvae_model_path)
     vqvae_model.to(device)
     vqvae_model.eval()
-
-    test_loader = create_NONrevin_dataloaders(batchsize=4096*10, dataset=args.dataset, base_path=args.base_path)
-
     print('TEST')
     one_loop(test_loader, vqvae_model, device, args)
+    print('-------------')
+
+def get_sklearn_report(preds, trues):
+    metrics = sklearn.metrics.precision_recall_fscore_support(trues, preds, average=None)
+
+    metrics_df = pd.DataFrame({
+        'Precision': metrics[0],
+        'Recall': metrics[1],
+        'F1-Score': metrics[2],
+        'Support': metrics[3]
+    })
+    print(metrics_df.round(3))
+    f1 = metrics_df['F1-Score'].mean()
+    print('Overall F1-Score:', f1.round(3))
+
+
+def run_baselines(test_data):
+    test_data = test_data.flatten()
+    all_0_preds = np.zeros_like(test_data)
+    all_1_preds = np.ones_like(test_data)
+
+    p_1 = np.sum(test_data) / test_data.size
+    random_preds = np.random.choice([0, 1], size=test_data.size, p=[1-p_1, p_1])
+    
+    print('All 0s')
+    get_sklearn_report(all_0_preds, test_data)
+    print('All 1s')
+    get_sklearn_report(all_1_preds, test_data)
+    print('Random')
+    get_sklearn_report(random_preds, test_data)
+
+    
+
+    
+    
+
+    
     print('-------------')
 
 

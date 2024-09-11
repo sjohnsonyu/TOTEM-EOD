@@ -1,10 +1,12 @@
 gpu=1
 seq_len=96
-root_path_name=/add/your/own/path
-data_path_name=weather.csv
+root_path_name=/n/home05/sjohnsonyu/TOTEM
+data_path_name=imputation_and_forecasting_data/weather/weather.csv
 data_name=custom
 random_seed=2021
 pred_len=0
+
+export PYTHONPATH=$root_path_name
 
 python -u imputation/save_notrevin_notrevinmasked_revinx_revinxmasked.py\
   --random_seed $random_seed \

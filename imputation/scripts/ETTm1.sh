@@ -1,6 +1,6 @@
 gpu=0
 seq_len=96
-root_path_name=/add/your/own/path
+root_path_name=/n/home05/sjohnsonyu/TOTEM
 data_path_name=ETTm1.csv
 data_name=ETTm1
 random_seed=2021

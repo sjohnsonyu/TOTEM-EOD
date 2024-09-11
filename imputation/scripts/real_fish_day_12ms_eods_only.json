@@ -9,14 +9,14 @@
         "num_residual_layers": 2,
         "res_hidden_size": 64,
         "embedding_dim": 64,
-        "num_embeddings": 512,
+        "num_embeddings": 256,
         "commitment_cost": 0.25,
         "compression_factor": 4,
-        "dataset": "ETTm1"
+        "dataset": "real_fish_day_12ms_eods_only_seq_len_640"
     },
     "comet_config": {
         "api_key": "l78zaphU6Io9DXDQyKhwbzte0",
-        "project_name": "add yours here",
+        "project_name": "real_fish_day_12ms_eods_only_seq_len_640",
         "workspace": "sjohnsonyu"
     }
 }

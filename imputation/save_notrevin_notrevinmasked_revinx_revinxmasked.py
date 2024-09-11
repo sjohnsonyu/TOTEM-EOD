@@ -22,6 +22,7 @@ class ExtractData:
     def one_loop(self, loader):
         x_original = []
         x_in_revin_space = []
+        print('starting loop')
 
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(loader):
             x_original.append(np.array(batch_x))
@@ -34,6 +35,10 @@ class ExtractData:
 
         print(x_in_revin_space_arr.shape, x_original_arr.shape)
         return x_in_revin_space_arr, x_original_arr
+
+    def reverse_revin(self, x_in_revin_space):  # NOTE Sonja added
+        x_reversed = self.revin_layer_x(torch.tensor(x_in_revin_space, dtype=torch.float32).to(self.device), "denorm")
+        return x_reversed.detach().cpu().numpy()
 
     def extract_data(self):
         train_data, train_loader = self._get_data(flag='train')
@@ -59,6 +64,7 @@ class ExtractData:
             x_test_arr = np.swapaxes(x_test_in_revin_space_arr, 1, 2).reshape((-1, self.args.seq_len))
 
             orig_x_train_arr = np.swapaxes(x_train_original_arr, 1, 2).reshape((-1, self.args.seq_len))
+            breakpoint()
             orig_x_val_arr = np.swapaxes(x_val_original_arr, 1, 2).reshape((-1, self.args.seq_len))
             orig_x_test_arr = np.swapaxes(x_test_original_arr, 1, 2).reshape((-1, self.args.seq_len))
 
@@ -68,13 +74,17 @@ class ExtractData:
         if not os.path.exists(self.args.save_path):
             os.makedirs(self.args.save_path)
 
-        np.save(self.args.save_path + '/train_revin_x.npy', x_train_arr)
-        np.save(self.args.save_path + '/val_revin_x.npy', x_val_arr)
-        np.save(self.args.save_path + '/test_revin_x.npy', x_test_arr)
-
+        print('skipping revin saving for now')
+        # np.save(self.args.save_path + '/train_revin_x.npy', x_train_arr)
+        # np.save(self.args.save_path + '/val_revin_x.npy', x_val_arr)
+        # np.save(self.args.save_path + '/test_revin_x.npy', x_test_arr)
+        print('trying to save train')
         np.save(self.args.save_path + '/train_notrevin_x.npy', orig_x_train_arr)
+        print('trying to save val')
         np.save(self.args.save_path + '/val_notrevin_x.npy', orig_x_val_arr)
+        print('trying to save test')
         np.save(self.args.save_path + '/test_notrevin_x.npy', orig_x_test_arr)
+        print('done')
 
 
 if __name__ == '__main__':
@@ -144,6 +154,10 @@ if __name__ == '__main__':
         pass
     elif 'ETT' in args.data and args.enc_in == 7:
         pass
+    elif 'real_fish_day_12ms' in args.data_path and args.data == 'custom' and args.enc_in == 10:
+        pass
+    elif 'real_fish_day_12ms' in args.data_path and args.data == 'custom' and args.enc_in == 4:
+        pass
     else:
         pdb.set_trace()
 
@@ -153,3 +167,21 @@ if __name__ == '__main__':
     Exp = ExtractData
     exp = Exp(args)  # set experiments
     exp.extract_data()
+    # breakpoint()
+
+    # import joblib
+    # preds = joblib.load('preds.pkl')
+    # trues = joblib.load('trues.pkl')
+    # unrevined_preds = []
+    # unrevined_trues = []
+
+    # for pred in preds:
+    #     x_unrevined = exp.reverse_revin(pred)
+    #     unrevined_preds.append(x_unrevined)
+    
+    # for true in trues:
+    #     x_unrevined = exp.reverse_revin(true)
+    #     unrevined_trues.append(x_unrevined)
+    
+    # joblib.dump(unrevined_preds, 'unrevined_preds.pkl')
+    # joblib.dump(unrevined_trues, 'unrevined_trues.pkl')

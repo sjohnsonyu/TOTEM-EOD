@@ -99,8 +99,9 @@ def train_model(model, device, vqvae_config, save_dir, logger, args):
 
     print('BATCHSIZE:', args.batchsize)
     train_loader, vali_loader, test_loader = create_datloaders(batchsize=args.batchsize, dataset=vqvae_config["dataset"], base_path=args.base_path, revined_data=args.revined_data)
-
-    # do + 0.5 to ciel it
+    print('range in loop', int((vqvae_config['num_training_updates']/len(train_loader)) + 0.5))
+    # breakpoint()
+    # do + 0.5 to ceil it
     for epoch in range(int((vqvae_config['num_training_updates']/len(train_loader)) + 0.5)):
         model.train()
         # Do masking in the loop
@@ -111,34 +112,46 @@ def train_model(model, device, vqvae_config, save_dir, logger, args):
             mask = torch.rand((B, T)).to(device)
             mask[mask <= args.mask_ratio] = 0  # masked
             mask[mask > args.mask_ratio] = 1  # remained
-            inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
+            # inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
+            inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
 
             loss, vq_loss, recon_error, x_recon, perplexity, embedding_weight, encoding_indices, encodings = \
                 model.shared_eval(tensor_all_data_in_batch, inp, optimizer, 'train', comet_logger=logger)
 
-            if epoch % 10000 == 0:
+            if epoch % 10 == 0:
                 comet_logger.log_metric('train_vqvae_loss_each_batch', loss.item())
                 comet_logger.log_metric('train_vqvae_vq_loss_each_batch', vq_loss.item())
                 comet_logger.log_metric('train_vqvae_recon_loss_each_batch', recon_error.item())
                 comet_logger.log_metric('train_vqvae_perplexity_each_batch', perplexity.item())
+                if i < 10:
+                    print('Epoch: ', epoch, 'Batch: ', i, 'Loss: ', loss.item(), 'VQ Loss: ', vq_loss.item(), 'Recon Loss: ', recon_error.item(), 'Perplexity: ', perplexity.item())
+        
+        # uncomment if you want the validation
+        if epoch % 10 == 0:
+            with (torch.no_grad()):
+                model.eval()
+                for i, (batch_x) in enumerate(vali_loader):
+                    tensor_all_data_in_batch = torch.tensor(batch_x, dtype=torch.float, device=device)
+        
+                    # # random mask
+                    B, T = batch_x.shape
+                    mask = torch.rand((B, T)).to(device)
+                    mask[mask <= args.mask_ratio] = 0  # masked
+                    mask[mask > args.mask_ratio] = 1  # remained
+                    # inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
+                    inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
+        
+                    val_loss, val_vq_loss, val_recon_error, val_x_recon, val_perplexity, val_embedding_weight, \
+                        val_encoding_indices, val_encodings = \
+                        model.shared_eval(tensor_all_data_in_batch, inp, optimizer, 'val', comet_logger=logger)
 
-        # # uncomment if you want the validation
-        # if epoch % 1000000 == 0:
-        #     with (torch.no_grad()):
-        #         model.eval()
-        #         for i, (batch_x) in enumerate(vali_loader):
-        #             tensor_all_data_in_batch = torch.tensor(batch_x, dtype=torch.float, device=device)
-        #
-        #             # # random mask
-        #             B, T = batch_x.shape
-        #             mask = torch.rand((B, T)).to(device)
-        #             mask[mask <= args.mask_ratio] = 0  # masked
-        #             mask[mask > args.mask_ratio] = 1  # remained
-        #             inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
-        #
-        #             val_loss, val_vq_loss, val_recon_error, val_x_recon, val_perplexity, val_embedding_weight, \
-        #                 val_encoding_indices, val_encodings = \
-        #                 model.shared_eval(tensor_all_data_in_batch, inp, optimizer, 'val', comet_logger=logger)
+                    if epoch % 10 == 0:
+                        comet_logger.log_metric('val_vqvae_loss_each_batch', val_loss.item())
+                        comet_logger.log_metric('val_vqvae_vq_loss_each_batch', val_vq_loss.item())
+                        comet_logger.log_metric('val_vqvae_recon_loss_each_batch', val_recon_error.item())
+                        comet_logger.log_metric('val_vqvae_perplexity_each_batch', val_perplexity.item())
+                        if i < 10:
+                            print('Epoch: ', epoch, 'Batch: ', i, 'Val Loss: ', val_loss.item(), 'VQ Loss: ', val_vq_loss.item(), 'Recon Loss: ', val_recon_error.item(), 'Perplexity: ', val_perplexity.item())
 
         if epoch % 1000000 == 0:
             # save the model checkpoints locally and to comet
@@ -182,6 +195,22 @@ def create_datloaders(batchsize=100, dataset="dummy", base_path='dummy', revined
     elif dataset == 'all':
         print('all')
         full_path = base_path + '/all'
+
+    elif dataset == 'real_fish_day_12ms':
+        print('real_fish_day_12ms')
+        full_path = base_path + '/real_fish_day_12ms'
+
+    elif dataset == 'real_fish_day_12ms_seq_len_720':
+        print('real_fish_day_12ms_seq_len_720')
+        full_path = base_path + '/real_fish_day_12ms_seq_len_720'
+
+    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_720':
+        print('real_fish_day_12ms_eods_only_seq_len_720')
+        full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_720'
+
+    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_640':
+            print('real_fish_day_12ms_eods_only_seq_len_640')
+            full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_640'
 
     else:
         print('Not done yet')
