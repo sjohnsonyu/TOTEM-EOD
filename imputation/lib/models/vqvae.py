@@ -647,7 +647,7 @@ class vqvae(BaseModel):
         self.encoder = Encoder(1, num_hiddens, num_residual_layers, num_residual_hiddens, embedding_dim, self.compression_factor)
         self.decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens, self.compression_factor)
 
-    def shared_eval(self, batch, batch_masked, optimizer, mode, comet_logger=None):
+    def shared_eval(self, batch, batch_masked, optimizer, mode, comet_logger=None, loss_fn='bce'):
         if mode == 'train':
             optimizer.zero_grad()
 
@@ -655,7 +655,11 @@ class vqvae(BaseModel):
             vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
             data_recon = self.decoder(quantized, self.compression_factor)
 
-            recon_error = F.mse_loss(data_recon, batch)
+            if loss_fn == 'bce':
+                data_recon = torch.sigmoid(data_recon)
+                recon_error = F.binary_cross_entropy(data_recon, batch)
+            elif loss_fn == 'mse':
+                recon_error = F.mse_loss(data_recon, batch)
             loss = recon_error + vq_loss
             loss.backward()
             optimizer.step()
@@ -666,7 +670,11 @@ class vqvae(BaseModel):
                 vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
 
                 data_recon = self.decoder(quantized, self.compression_factor)
-                recon_error = F.mse_loss(data_recon, batch)
+                if loss_fn == 'bce':
+                    data_recon = torch.sigmoid(data_recon)
+                    recon_error = F.binary_cross_entropy(data_recon, batch)
+                elif loss_fn == 'mse':
+                    recon_error = F.mse_loss(data_recon, batch)
                 loss = recon_error + vq_loss
 
         # turning this off for faster training - uncomment if want to create loss / perplexity curves

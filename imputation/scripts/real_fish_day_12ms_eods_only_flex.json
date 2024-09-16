@@ -1,0 +1,24 @@
+{
+    "vqvae_config": {
+        "model_name": "vqvae",
+        "model_save_name": "vqvae",
+        "pretrained": false,
+        "learning_rate": 1e-3,
+        "num_training_updates": 15000,
+        "block_hidden_size": 128,
+        "num_residual_layers": 2,
+        "res_hidden_size": 64,
+        "embedding_dim": 64,
+        "num_embeddings": 256,
+        "commitment_cost": 0.25,
+        "compression_factor": 4,
+        "dataset": "real_fish_day_12ms_eods_only_12hrs_seq_len_64_fish_all",
+        "loss_fn": "bce",
+        "class_weights": [1, 10]
+    },
+    "comet_config": {
+        "api_key": "l78zaphU6Io9DXDQyKhwbzte0",
+        "project_name": "real_fish_day_12ms_eods_only_12hrs_seq_len_64_fish_all",
+        "workspace": "sjohnsonyu"
+    }
+}

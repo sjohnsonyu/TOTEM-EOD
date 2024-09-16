@@ -11,6 +11,7 @@ import torch
 from lib.models import get_model_class
 from time import gmtime, strftime
 from torch.utils.data import TensorDataset
+from utils.data_utils import get_masked_input, create_dataloaders
 
 
 def main(device, config, save_dir, logger, data_init_loc, args):
@@ -98,22 +99,29 @@ def train_model(model, device, vqvae_config, save_dir, logger, args):
     start_time = time.time()
 
     print('BATCHSIZE:', args.batchsize)
-    train_loader, vali_loader, test_loader = create_datloaders(batchsize=args.batchsize, dataset=vqvae_config["dataset"], base_path=args.base_path, revined_data=args.revined_data)
+    train_loader, vali_loader, test_loader = create_dataloaders(batchsize=args.batchsize, dataset=vqvae_config["dataset"], base_path=args.base_path, revined_data=args.revined_data)
     print('range in loop', int((vqvae_config['num_training_updates']/len(train_loader)) + 0.5))
-    # breakpoint()
+
     # do + 0.5 to ceil it
     for epoch in range(int((vqvae_config['num_training_updates']/len(train_loader)) + 0.5)):
         model.train()
         # Do masking in the loop
         for i, (batch_x) in enumerate(train_loader):
             tensor_all_data_in_batch = torch.tensor(batch_x, dtype=torch.float, device=device)
-            # random mask
-            B, T = batch_x.shape
-            mask = torch.rand((B, T)).to(device)
-            mask[mask <= args.mask_ratio] = 0  # masked
-            mask[mask > args.mask_ratio] = 1  # remained
-            # inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
-            inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
+
+            # B, T = batch_x.shape
+            # mask = torch.rand((B, T)).to(device)
+            # if args.mask_type == 'random':
+            #     mask[mask <= args.mask_ratio] = 0  # masked
+            #     mask[mask > args.mask_ratio] = 1  # remained
+            # elif args.mask_type == 'end':
+            #     mask[:, int(T*args.mask_ratio):] = 0
+            #     mask[:, :int(T*args.mask_ratio)] = 1
+            # elif args.mask_type == 'end_single':
+            #     mask[:, -1] = 0
+            #     mask[:, :-1] = 1
+            # inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
+            inp, _ = get_masked_input(batch_x, tensor_all_data_in_batch, args, device)
 
             loss, vq_loss, recon_error, x_recon, perplexity, embedding_weight, encoding_indices, encodings = \
                 model.shared_eval(tensor_all_data_in_batch, inp, optimizer, 'train', comet_logger=logger)
@@ -133,13 +141,14 @@ def train_model(model, device, vqvae_config, save_dir, logger, args):
                 for i, (batch_x) in enumerate(vali_loader):
                     tensor_all_data_in_batch = torch.tensor(batch_x, dtype=torch.float, device=device)
         
-                    # # random mask
-                    B, T = batch_x.shape
-                    mask = torch.rand((B, T)).to(device)
-                    mask[mask <= args.mask_ratio] = 0  # masked
-                    mask[mask > args.mask_ratio] = 1  # remained
-                    # inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
-                    inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
+                    inp, _ = get_masked_input(batch_x, tensor_all_data_in_batch, args, device)
+                    # # # random mask
+                    # B, T = batch_x.shape
+                    # mask = torch.rand((B, T)).to(device)
+                    # mask[mask <= args.mask_ratio] = 0  # masked
+                    # mask[mask > args.mask_ratio] = 1  # remained
+                    # # inp = tensor_all_data_in_batch.masked_fill(mask == 0, 0)
+                    # inp = tensor_all_data_in_batch.masked_fill(mask == 0, -1)
         
                     val_loss, val_vq_loss, val_recon_error, val_x_recon, val_perplexity, val_embedding_weight, \
                         val_encoding_indices, val_encodings = \
@@ -160,92 +169,6 @@ def train_model(model, device, vqvae_config, save_dir, logger, args):
 
     print('total time: ', round(time.time() - start_time, 3))
     return model
-
-
-def create_datloaders(batchsize=100, dataset="dummy", base_path='dummy', revined_data=False):
-
-    if dataset == 'weather':
-        print('weather')
-        full_path = base_path + '/weather'
-
-    elif dataset == 'electricity':
-        print('electricity')
-        full_path = base_path + '/electricity'
-
-    elif dataset == 'traffic':
-        print('traffic')
-        full_path = base_path + '/traffic'
-
-    elif dataset == 'ETTh1':
-        print('ETTh1')
-        full_path = base_path + '/ETTh1'
-
-    elif dataset == 'ETTm1':
-        print('ETTm1')
-        full_path = base_path + '/ETTm1'
-
-    elif dataset == 'ETTh2':
-        print('ETTh2')
-        full_path = base_path + '/ETTh2'
-
-    elif dataset == 'ETTm2':
-        print('ETTm2')
-        full_path = base_path + '/ETTm2'
-
-    elif dataset == 'all':
-        print('all')
-        full_path = base_path + '/all'
-
-    elif dataset == 'real_fish_day_12ms':
-        print('real_fish_day_12ms')
-        full_path = base_path + '/real_fish_day_12ms'
-
-    elif dataset == 'real_fish_day_12ms_seq_len_720':
-        print('real_fish_day_12ms_seq_len_720')
-        full_path = base_path + '/real_fish_day_12ms_seq_len_720'
-
-    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_720':
-        print('real_fish_day_12ms_eods_only_seq_len_720')
-        full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_720'
-
-    elif dataset == 'real_fish_day_12ms_eods_only_seq_len_640':
-            print('real_fish_day_12ms_eods_only_seq_len_640')
-            full_path = base_path + '/real_fish_day_12ms_eods_only_seq_len_640'
-
-    else:
-        print('Not done yet')
-        pdb.set_trace()
-
-
-    if revined_data == 'False':
-        train_data = np.load(os.path.join(full_path, "train_notrevin_x.npy"), allow_pickle=True)
-        val_data = np.load(os.path.join(full_path, "val_notrevin_x.npy"), allow_pickle=True)
-        test_data = np.load(os.path.join(full_path, "test_notrevin_x.npy"), allow_pickle=True)
-
-    elif revined_data == 'True':
-        train_data = np.load(os.path.join(full_path, "train_revin_x.npy"), allow_pickle=True)
-        val_data = np.load(os.path.join(full_path, "val_revin_x.npy"), allow_pickle=True)
-        test_data = np.load(os.path.join(full_path, "test_revin_x.npy"), allow_pickle=True)
-
-    train_dataloader = torch.utils.data.DataLoader(train_data,
-                                                   batch_size=batchsize,
-                                                   shuffle=True,
-                                                   num_workers=10,
-                                                   drop_last=True)
-
-    val_dataloader = torch.utils.data.DataLoader(val_data,
-                                                batch_size=batchsize,
-                                                shuffle=False,
-                                                num_workers=10,
-                                                drop_last=False)
-
-    test_dataloader = torch.utils.data.DataLoader(test_data,
-                                                batch_size=batchsize,
-                                                shuffle=False,
-                                                num_workers=10,
-                                                drop_last=False)
-
-    return train_dataloader, val_dataloader, test_dataloader
 
 
 if __name__ == '__main__':
@@ -283,6 +206,8 @@ if __name__ == '__main__':
     parser.add_argument('--revined_data', type=str, required=True, help='if true use revin, if false do something else')
 
     parser.add_argument('--seed', type=int, required=True, help='the seed to use')
+
+    parser.add_argument('--mask_type', type=str, choices=['random', 'end', 'end_single'], default='end_single', help='the type of mask to use')
 
     args = parser.parse_args()
 
